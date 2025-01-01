@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @router.post("/add-tracks", response_model=dict)
 async def add_tracks(tracks: list[str] = Body(...)):
-   
+
     async def search(query: str) -> int | None:
         try:
             search_result: Search | None = await client.search(query)

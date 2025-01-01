@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 import logging
 
-from app import spotify, yandex
+from app import spotify
 from app.celery_app import celery_app
 
 

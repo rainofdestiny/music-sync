@@ -3,7 +3,6 @@ import logging
 from functools import wraps
 
 import aiohttp
-from fastapi import HTTPException
 from app.spotify.depends import r
 from app.config import settings
 from app.spotify.models import AuthModel
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 class OAuth:
     _instance = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls):
         # Implementing singleton pattern to ensure a single instance of OAuth
         if not cls._instance:
             cls._instance = super(OAuth, cls).__new__(cls)
@@ -83,7 +82,6 @@ class OAuth:
             logger.error(f"An error occurred: {str(e)}")
             raise ValueError(f"An error occurred: {str(e)}") from e
 
-            
     async def gen_token(self, code: str) -> None:
         async with aiohttp.ClientSession() as session:
 

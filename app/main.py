@@ -4,33 +4,15 @@ import logging
 from app import spotify, yandex
 from app.celery_app import celery_app
 
-from fastapi.responses import RedirectResponse
 
 app = FastAPI()
 
 logging.basicConfig(
-    filename='app.log',
+    filename="app.log",
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-
-@app.get("/auth", response_class=RedirectResponse)
-def auth():
-    logger.info("Redirecting to Spotify auth URL.")
-    return spotify.auth_url()
-
-
-@app.get("/callback")
-def callback(code: str):
-    try:
-        spotify.gen_token(code)
-        logger.info("Token generated successfully.")
-        return {"ok": True, "detail": "You can close this page"}
-    except Exception as e:
-        logger.error(f"Error generating token: {e}")
-        raise HTTPException(status_code=500, detail="Token generation failed.")
 
 
 @app.get("/sync")

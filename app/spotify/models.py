@@ -10,7 +10,7 @@ class Base(BaseModel):
 class TrackModel(Base):
     id: str
     name: str
-    artists: str  # Список артистов
+    artists: str
 
     @validator("artists", pre=True, always=True)
     def validate_artists(cls, value):

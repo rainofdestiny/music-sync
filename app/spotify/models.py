@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from app.config import settings
 
 
@@ -12,8 +12,8 @@ class TrackModel(Base):
     name: str
     artists: str
 
-    @validator("artists", pre=True, always=True)
-    def validate_artists(cls, value):
+    @field_validator("artists", mode="before")
+    def validate_artists(cls, value: list[dict] | str):
         if isinstance(value, list):
             return ", ".join(artist["name"] for artist in value)
         return value
@@ -25,16 +25,20 @@ class AuthModel(Base):
     expires_in: int = Field(default=3600, ge=0)
 
 
+class RefreshTokenAuthModel(Base):
+    access_token: str 
+    token_type: str = "Bearer"
+    expires_in: int = Field(default=3600, ge=0)
+    scope: str = settings.spotify_scope
+
+
 class AuthorizeRequestModel(Base):
     response_type: str = "code"
     client_id: str = settings.spotify_client_id
-    scope: str = "user-read-currently-playing user-library-read"
+    scope: str = settings.spotify_scope
     redirect_uri: str = settings.spotify_redirect_uri
 
     @property
-    def query(self) -> str:
-        return "&".join([f"{k}={v}" for k, v in self.dict().items()])
-
-    @property
     def url(self) -> str:
-        return f"https://accounts.spotify.com/authorize?{self.query}"
+        query = "&".join([f"{k}={v}" for k, v in self.model_dump().items()])
+        return f"https://accounts.spotify.com/authorize?{query}"

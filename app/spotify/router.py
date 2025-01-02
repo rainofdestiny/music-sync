@@ -1,5 +1,6 @@
 import logging
 import aiohttp
+import redis
 
 from fastapi import APIRouter, Query, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -8,6 +9,7 @@ from fastapi.exceptions import HTTPException
 
 from app.spotify.models import TrackModel, AuthorizeRequestModel
 from app.spotify.oauth import oauth
+from app.depends import get_redis
 
 
 router = APIRouter(prefix="/spotify")
@@ -22,11 +24,18 @@ def auth():
 
 
 @router.get("/callback", response_class=JSONResponse)
-async def callback(code: str = Query(..., description="Authorization code returned by Spotify")):
+async def callback(
+    code: str = Query(..., description="Authorization code returned by Spotify"),
+    r: redis.Redis = Depends(get_redis),
+):
     try:
-        await oauth.gen_token(code)
+        auth = await oauth.gen_auth_data(code)
+
+        await r.set("spotify:access_token", auth.access_token, ex=auth.expires_in)
+        await r.set("spotify:refresh_token", auth.refresh_token)
 
         logger.info("Token generated successfully.")
+
         return {"ok": True, "detail": "You can close this page"}
     except Exception as e:
         logger.error(f"Error generating token: {e}")

@@ -1,10 +1,13 @@
-import base64
 import logging
-
+import base64
 import aiohttp
-from app.spotify.depends import r
+import redis
+
+from fastapi import Depends
+
 from app.config import settings
-from app.spotify.models import AuthModel
+from app.depends import get_redis
+from app.spotify.models import AuthModel, RefreshTokenAuthModel
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +35,15 @@ class OAuth:
         token = f"{self.client_id}:{self.client_secret}"
         return base64.b64encode(token.encode()).decode()
 
-    async def get_access_token(self):
-        access_token = r.get("spotify:access_token")
+    async def get_access_token(self, r: redis.Redis = Depends(get_redis)) -> str:
+        access_token = await r.get("spotify:access_token")
         if not access_token:
-            token_data = await self._refresh_token()
-            access_token = token_data.access_token
-            r.set("spotify:access_token", access_token, ex=token_data.expires_in)
+            access_token = await self._refresh_token(r)
         return access_token
 
-    async def _refresh_token(self) -> AuthModel:
+    async def _refresh_token(self, r: redis.Redis) -> str:
         """Refreshes the access token using the refresh token."""
-        refresh_token = r.get("spotify:refresh_token")
+        refresh_token = await r.get("spotify:refresh_token")
 
         if not refresh_token:
             logger.error("Refresh token not found.")
@@ -66,7 +67,12 @@ class OAuth:
                     response.raise_for_status()
                     logger.info("Token refreshed successfully.")
                     json_response = await response.json()
-                    return AuthModel(**json_response.json())
+                    token_data = RefreshTokenAuthModel(**json_response)
+
+                    access_token = token_data.access_token
+                    await r.set("spotify:access_token", access_token, ex=token_data.expires_in)
+
+                    return access_token
 
         except aiohttp.ClientResponseError as e:
             logger.error(f"Error refreshing token: {e.message}")
@@ -75,7 +81,7 @@ class OAuth:
             logger.error(f"An error occurred: {str(e)}")
             raise ValueError(f"An error occurred: {str(e)}") from e
 
-    async def gen_token(self, code: str) -> None:
+    async def gen_auth_data(self, code: str) -> AuthModel:
         logger.info("Starting generate token")
         async with aiohttp.ClientSession() as session:
 
@@ -93,10 +99,7 @@ class OAuth:
             async with session.post(url=url, headers=headers, data=data) as response:
                 response.raise_for_status()
                 json_response = await response.json()
-                auth_data = AuthModel(**json_response)
-
-        r.set("spotify:access_token", auth_data.access_token, ex=auth_data.expires_in)
-        r.set("spotify:refresh_token", auth_data.refresh_token)
+                return AuthModel(**json_response)
 
 
 oauth = OAuth()

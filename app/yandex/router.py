@@ -5,7 +5,6 @@ from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 
 from yandex_music import ClientAsync
-from yandex_music.search.search import Search
 
 from app.config import settings
 
@@ -16,18 +15,20 @@ router = APIRouter(prefix="/yandex")
 logger = logging.getLogger(__name__)
 
 
-@router.post("/add-tracks", response_model=dict)
+@router.post("/add-tracks", response_model=JSONResponse)
 async def add_tracks(tracks: list[str] = Body(...)):
 
     async def search(query: str) -> int | None:
         try:
-            search_result: Search | None = await client.search(query)
-            if search_result and search_result.best:
-                if search_result.best.type == "track":
-                    return search_result.best.result.track_id
+            search_result = await client.search(query)
+            if search_result and search_result.tracks and search_result.tracks.results:
+                track = search_result.tracks.results[0]
+                if hasattr(track, "id"):
+                    return int(track.id)
+            return None
         except Exception as e:
-            logger.error(f"Error during search: {e}", exc_info=True)
-        return None
+            logger.error(f"Error when searching for a track: {e}", exc_info=True)
+            return None
 
     try:
         track_ids = list(

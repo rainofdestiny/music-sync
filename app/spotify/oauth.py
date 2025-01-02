@@ -1,6 +1,5 @@
 import base64
 import logging
-from functools import wraps
 
 import aiohttp
 from app.spotify.depends import r
@@ -33,19 +32,13 @@ class OAuth:
         token = f"{self.client_id}:{self.client_secret}"
         return base64.b64encode(token.encode()).decode()
 
-    def __call__(self, func):
-        """Decorator to add access token to the function."""
-
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            access_token = r.get("spotify:access_token")
-            if not access_token:
-                token_data = await self._refresh_token()
-                access_token = token_data.access_token
-                r.set("spotify:access_token", access_token, ex=token_data.expires_in)
-            return func(access_token, *args, **kwargs)
-
-        return wrapper
+    async def get_access_token(self):
+        access_token = r.get("spotify:access_token")
+        if not access_token:
+            token_data = await self._refresh_token()
+            access_token = token_data.access_token
+            r.set("spotify:access_token", access_token, ex=token_data.expires_in)
+        return access_token
 
     async def _refresh_token(self) -> AuthModel:
         """Refreshes the access token using the refresh token."""
@@ -83,6 +76,7 @@ class OAuth:
             raise ValueError(f"An error occurred: {str(e)}") from e
 
     async def gen_token(self, code: str) -> None:
+        logger.info("Starting generate token")
         async with aiohttp.ClientSession() as session:
 
             url = "https://accounts.spotify.com/api/token"

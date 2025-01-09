@@ -1,57 +1,45 @@
 import logging
-import asyncio
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends, status
 from fastapi.responses import JSONResponse
 
-from yandex_music import ClientAsync
+from app.yandex.api import search, like
+from app.yandex.models import TrackIdsModel, TrackModel
+from app.yandex.depends import get_client
 
-from app.config import settings
-
-client = asyncio.run(ClientAsync(settings.yandex_token).init())
 
 router = APIRouter(prefix="/yandex")
 
 logger = logging.getLogger(__name__)
 
 
-@router.post("/add-tracks", response_model=JSONResponse)
-async def add_tracks(tracks: list[str] = Body(...)):
-
-    async def search(query: str) -> int | None:
-        try:
-            search_result = await client.search(query)
-            if search_result and search_result.tracks and search_result.tracks.results:
-                track = search_result.tracks.results[0]
-                if hasattr(track, "id"):
-                    return int(track.id)
-            return None
-        except Exception as e:
-            logger.error(f"Error when searching for a track: {e}", exc_info=True)
-            return None
-
+@router.post(
+    "/add-tracks", response_class=JSONResponse, status_code=status.HTTP_201_CREATED
+)
+async def add_tracks(tracks: list[TrackModel] = Body(...), client=Depends(get_client)):
+    tracks_ids: list[TrackIdsModel] = await search(client, tracks)
     try:
-        track_ids = list(
-            filter(None, await asyncio.gather(*(search(track) for track in tracks)))
-        )
-
-        if not track_ids:
+        if not tracks_ids:
             logger.warning("No valid tracks found to add.")
+
             return JSONResponse(
-                status_code=400,
+                status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": "No valid tracks found to add."},
             )
 
-        await client.users_likes_tracks_add(track_ids)
+        liked_tracks: list[int] = await like(client, [track.yandex_id for track in tracks_ids])  # type: ignore
     except Exception as e:
         logger.error(f"Error when adding tracks: {e}", exc_info=True)
+
         return JSONResponse(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": "An error occurred while adding tracks."},
         )
 
     logger.info("Tracks successfully added.")
+    result = [t_id.spotify for t_id in tracks_ids if t_id.yandex in liked_tracks]
+
     return JSONResponse(
-        status_code=200,
-        content={"message": "Tracks successfully added.", "track_ids": track_ids},
+        status_code=status.HTTP_201_CREATED,
+        content={"message": "Tracks successfully added.", "tracks_ids": result},
     )

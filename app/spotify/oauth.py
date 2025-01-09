@@ -1,13 +1,13 @@
 import logging
 import base64
-import aiohttp
 import redis
 
 from fastapi import Depends
 
 from app.config import settings
 from app.depends import get_redis
-from app.spotify.models import AuthModel, RefreshTokenAuthModel
+from app.spotify.models import AuthModel
+from app.spotify.api import gen_oauth_data, refresh_token
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,17 @@ class OAuth:
         token = f"{self.client_id}:{self.client_secret}"
         return base64.b64encode(token.encode()).decode()
 
+    @property
+    def authorize_request(self) -> str:
+        data = {
+            "response_type": "code",
+            "client_id": self.client_id,
+            "scope": settings.spotify_scope,
+            "redirect_uri": self.redirect_uri,
+        }
+        query = "&".join([f"{k}={v}" for k, v in data.items()])
+        return f"https://accounts.spotify.com/authorize?{query}"
+
     async def get_access_token(self, r: redis.Redis = Depends(get_redis)) -> str:
         access_token = await r.get("spotify:access_token")
         if not access_token:
@@ -43,63 +54,27 @@ class OAuth:
 
     async def _refresh_token(self, r: redis.Redis) -> str:
         """Refreshes the access token using the refresh token."""
-        refresh_token = await r.get("spotify:refresh_token")
+        _refresh_token = await r.get("spotify:refresh_token")
 
-        if not refresh_token:
+        if not _refresh_token:
             logger.error("Refresh token not found.")
             raise ValueError("Refresh token not found.")
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = "https://accounts.spotify.com/api/token"
-                headers = {
-                    "Authorization": f"Basic {self.auth_token}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                }
-                data = {
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "client_id": self.client_id,
-                }
-                async with session.post(
-                    url=url, headers=headers, data=data
-                ) as response:
-                    response.raise_for_status()
-                    logger.info("Token refreshed successfully.")
-                    json_response = await response.json()
-                    token_data = RefreshTokenAuthModel(**json_response)
+        data = await refresh_token(
+            refresh_token=_refresh_token,
+            auth_token=self.auth_token,
+            client_id=self.client_id,
+        )
+        await r.set("spotify:access_token", data.access_token, ex=data.expires_in)
 
-                    access_token = token_data.access_token
-                    await r.set("spotify:access_token", access_token, ex=token_data.expires_in)
+        return data.access_token
 
-                    return access_token
-
-        except aiohttp.ClientResponseError as e:
-            logger.error(f"Error refreshing token: {e.message}")
-            raise ValueError(f"Error refreshing token: {e.message}") from e
-        except Exception as e:
-            logger.error(f"An error occurred: {str(e)}")
-            raise ValueError(f"An error occurred: {str(e)}") from e
-
-    async def gen_auth_data(self, code: str) -> AuthModel:
+    async def gen_data(self, code: str) -> AuthModel:
         logger.info("Starting generate token")
-        async with aiohttp.ClientSession() as session:
-
-            url = "https://accounts.spotify.com/api/token"
-            headers = {
-                "Authorization": f"Basic {self.auth_token}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            }
-            data = {
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": self.redirect_uri,
-            }
-
-            async with session.post(url=url, headers=headers, data=data) as response:
-                response.raise_for_status()
-                json_response = await response.json()
-                return AuthModel(**json_response)
+        auth_data = await gen_oauth_data(
+            auth_token=self.auth_token, redirect_uri=self.redirect_uri, code=code
+        )
+        return auth_data
 
 
 oauth = OAuth()

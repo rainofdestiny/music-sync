@@ -1,8 +1,7 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
-from app import spotify
 from app.celery_app import celery_app
 
 
@@ -14,11 +13,15 @@ logger = logging.getLogger(__name__)
 @router.post("/")
 @celery_app.task(name="sync", expires=600)
 def sync(all: bool = Query(default=False, strict=True)):
+    pass
+
+
+"""
     if all:
         offset = 0
         total_added = 0
-
-        while tracks := spotify.get_liked_tracks(limit=50, offset=offset):
+        
+        # while tracks := spotify.get_liked_tracks(limit=50, offset=offset):
             if not tracks:
                 break
             yandex.add_tracks(tracks)
@@ -38,3 +41,4 @@ def sync(all: bool = Query(default=False, strict=True)):
         except Exception as e:
             logger.error(f"Error during sync: {e}")
             raise HTTPException(status_code=500, detail="Sync failed.")
+"""

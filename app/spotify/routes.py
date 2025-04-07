@@ -5,15 +5,17 @@ from fastapi import APIRouter, Query, Depends, status
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.exceptions import HTTPException
 
-from app.spotify import api
-from app.spotify import crud
+from app.spotify.client import client
 from app.spotify.oauth import oauth
 from app.spotify.models import TrackModel
+from app.spotify.depends import get_access_token_dependency
+
+from app.spotify import service
+
 from app.depends import get_redis
+from loguru import logger
 
-router = APIRouter(prefix="/spotify")
-
-logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/spotify", tags=["Spotify"])
 
 
 @router.get(
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
     include_in_schema=False,
 )
 def auth():
-    return oauth.authorize_request
+    return oauth.authorize_url
 
 
 @router.get(
@@ -38,20 +40,27 @@ async def callback(
     code: str = Query(..., description="Authorization code returned by Spotify"),
     r: redis.Redis = Depends(get_redis),
 ):
+
     try:
-        auth = await oauth.gen_data(code)
-        await crud.cache_tokens(r, auth)
+        tokens = await oauth.gen_oauth_data(code)
+        await service.cache_tokens(r, tokens)
 
         logger.info("Token generated successfully.")
 
-        return {"ok": True, "detail": "You can close this page"}
+        return RedirectResponse("/spotify/me")
+
     except Exception as e:
         logger.error(f"Error generating token: {e}")
         raise HTTPException(status_code=500, detail="Token generation failed.")
 
 
+@router.get("/me")
+async def get_me(access_token: str = Depends(get_access_token_dependency)):
+    return await client.get_me(access_token)
+
+
 @router.get(
-    "/get-liked-tracks",
+    "/tracks",
     response_class=JSONResponse,
     response_model=list[TrackModel],
     status_code=status.HTTP_200_OK,
@@ -59,6 +68,17 @@ async def callback(
 async def get_liked_tracks(
     limit: int = Query(default=50, ge=1, le=50),
     offset: int = Query(default=0, ge=0),
-    access_token: str = Depends(oauth.get_access_token),
+    exclude_saved: bool = Query(default=False),
+    access_token: str = Depends(get_access_token_dependency),
 ):
-    return await api.get_liked_tracks(access_token, limit, offset)
+    tracks: list[TrackModel] = await client.get_liked_tracks(
+        access_token=access_token, limit=limit, offset=offset
+    )
+
+    db = None
+    saved_tracks = await service.get_saved_tracks(db)
+
+    if exclude_saved:
+        return list(filter(lambda track: track not in saved_tracks, tracks))
+
+    return tracks

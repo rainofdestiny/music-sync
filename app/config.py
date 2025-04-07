@@ -5,7 +5,9 @@ class Settings(BaseSettings):
     spotify_client_id: str
     spotify_client_secret: str
     spotify_redirect_uri: str
-    spotify_scope: str = "user-read-currently-playing user-library-read"
+    spotify_scope: str = (
+        "user-read-currently-playing user-library-read user-read-private user-read-email"
+    )
 
     yandex_token: str
 

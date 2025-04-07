@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 @router.post(
-    "/add-tracks", response_class=JSONResponse, status_code=status.HTTP_201_CREATED
+    "/tracks",
+    response_class=JSONResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Yandex"],
 )
 async def add_tracks(tracks: list[TrackModel] = Body(...), client=Depends(get_client)):
     tracks_ids: list[TrackIdsModel] = await search(client, tracks)

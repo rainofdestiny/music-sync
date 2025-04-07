@@ -30,3 +30,11 @@ class RefreshTokenAuthModel(Base):
     token_type: str = "Bearer"
     expires_in: int = Field(default=3600, ge=0)
     scope: str = settings.spotify_scope
+
+
+class UserProfileModel(Base):
+    id: str
+    display_name: str
+    email: str
+    uri: str
+    country: str

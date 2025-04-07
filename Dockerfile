@@ -1,16 +1,21 @@
-# Используем официальный образ Python
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-# Устанавливаем рабочую директорию
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+
+ENV PATH="/root/.local/bin/:$PATH"
+
 WORKDIR /app
 
-# Копируем requirements.txt и устанавливаем зависимости
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY app pyproject.toml uv.lock .
 
-# Копируем приложение в контейнер
+RUN uv sync --frozen 
+
 COPY . .
 
+ENTRYPOINT []
 
-# Команда по умолчанию для запуска приложения
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,13 +1,15 @@
 import redis.asyncio as redis
-from fastapi import Depends
+from fastapi import Request
+from loguru import logger
 
 
-async def get_redis_pool():
+async def get_redis():
     pool = redis.ConnectionPool(
-        host="localhost", port=6379, db=0, decode_responses=True, max_connections=10
+        host="redis", port=6379, db=0, decode_responses=True, max_connections=10
     )
-    return pool
-
-
-async def get_redis(pool=Depends(get_redis_pool)):
     return redis.Redis(connection_pool=pool)
+
+
+async def log_request_dependency(request: Request):
+    logger.info(f"Incoming request: {request.method} {request.url}")
+    return request

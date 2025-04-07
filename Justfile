@@ -1,9 +1,11 @@
-app:
-  uvicorn app.main:app --host 0.0.0.0 --port 8000
+default: 
+  docker-compose up --build -d 
 
-dev:
-  uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+ruff: 
+  uv run ruff check .
 
-shell:
-  source $(poetry env info --path)/bin/activate
+black: 
+  uv run black .
 
+dev: black ruff 
+  docker-compose up --build 

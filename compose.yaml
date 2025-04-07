@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    container_name: "app"
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app  # Монтируем текущую директорию в контейнер
+    ports:
+      - "8000:8000"  # Открываем порт для доступа к приложению
+    env_file: .env
+    depends_on:
+      - redis
+
+  beat:
+    build: .
+    container_name: "ms_beat"
+    command: uv run celery -A app.celery_app beat --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    container_name: "ms_worker"
+    command: uv run celery -A app.celery_app worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+
+  redis:
+    container_name: "ms_redis"
+    image: "redis:alpine"  # Используем легковесный образ Redis
+    ports:
+      - "6379:6379"  # Открываем порт Redis

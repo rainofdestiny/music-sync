@@ -1,11 +1,21 @@
-default: 
-  docker-compose up --build -d 
+default:
+  docker-compose up --build -d
 
-ruff: 
-  uv run ruff check .
+lint:
+    uv run ruff check . --fix
+    uv run black .
 
-black: 
-  uv run black .
+dev: # black ruff
+  docker-compose up --build
 
-dev: black ruff 
-  docker-compose up --build 
+app:
+    docker exec -it app bash
+
+psql:
+    docker exec -it postgres psql -U postgres
+
+mm *args:
+  uv run alembic revision --autogenerate -m "{{args}}"
+
+migrate:
+  uv run alembic upgrade head

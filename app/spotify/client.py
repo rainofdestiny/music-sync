@@ -1,35 +1,52 @@
-import logging
-from typing import List
-from app.spotify.models import TrackModel, UserProfileModel
-from app.spotify.utils import HTTPClient
+from collections.abc import Generator, Mapping
+from typing import Any, TypedDict, Unpack
+
+from httpx import AsyncClient, Auth, Request, Response
+
+from app.spotify.schemas import TrackSchema, UserProfileSchema
 
 
-logger = logging.getLogger(__name__)
+class BearerAuth(Auth):
+    def __init__(self, token: str) -> None:
+        self.token = token
+
+    def auth_flow(self, request: Request) -> Generator[Request, Response]:
+        request.headers["Authorization"] = f"Bearer {self.token}"
+        yield request
+
+
+class RequestKwargs(TypedDict, total=False):
+    params: Mapping[str, str | int]
+    follow_redirects: bool
+    auth: tuple[str, str] | None
 
 
 class Client:
 
-    @staticmethod
-    async def get_me(access_token: str) -> UserProfileModel:
-        async with HTTPClient() as c:
-            headers = {"Authorization": f"Bearer {access_token}"}
-            response = await c.get(url="", headers=headers)
-            response.raise_for_status()
-            user = response.json()
-            return UserProfileModel(**user)
+    def __init__(self, access_token: str) -> None:
+        self.access_token = access_token
 
-    @staticmethod
+    async def _request(
+        self, url: str = "", **kwargs: Unpack[RequestKwargs]
+    ) -> dict[Any, Any]:
+        api_url = "https://api.spotify.com/v1/me/"
+        auth = BearerAuth(self.access_token)
+
+        async with AsyncClient(
+            base_url=api_url, http2=True, timeout=10.0, auth=auth
+        ) as client:
+            response = await client.get(url, **kwargs)
+            data = response.json()
+            return data
+
+    async def get_me(self) -> UserProfileSchema:
+        data = await self._request()
+        return UserProfileSchema(**data)
+
     async def get_liked_tracks(
-        *, access_token: str, limit: int = 50, offset: int = 0
-    ) -> List[TrackModel]:
-        async with HTTPClient() as c:
-            headers = {"Authorization": f"Bearer {access_token}"}
-            params = {"limit": limit, "offset": offset}
-            response = await c.get("/tracks", headers=headers, params=params)
-            response.raise_for_status()
-            json_response = response.json()
-            items = json_response.get("items", [])
-            return [TrackModel(**item["track"]) for item in items]
-
-
-client = Client()
+        self, *, limit: int = 50, offset: int = 0
+    ) -> list[TrackSchema]:
+        params = {"limit": limit, "offset": offset}
+        data = await self._request("/tracks", params=params)
+        items = data.get("items", [])
+        return [TrackSchema(**item["track"]) for item in items]

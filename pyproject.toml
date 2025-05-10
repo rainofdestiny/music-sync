@@ -1,19 +1,104 @@
 [project]
 name = "music-sync"
 version = "0.1.0"
-description = "Add your description here"
+description = "Sync music from various services (Spotify, Yandex)"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "rx" }]
 dependencies = [
+    "alembic>=1.15.2",
+    "asyncpg>=0.30.0",
     "black>=25.1.0",
     "celery==5.4.0",
+    "celery-pool-asyncio==0.2.0",
     "fastapi==0.115.6",
+    "greenlet>=3.1.1",
     "httpx[http2]>=0.28.1",
     "loguru>=0.7.3",
     "pydantic==2.10.4",
     "pydantic-settings==2.7.0",
     "redis==5.2.1",
-    "ruff>=0.11.4",
+    "ruff>=0.1.14",
+    "sqlalchemy>=2.0.40",
     "uvicorn==0.34.0",
     "yandex-music==2.2.0",
+    "pytest",
+    "passlib[bcrypt]",
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
+reportMissingImports = true
+reportUnusedImport = true
+reportMissingTypeStubs = false
+
+[tool.black]
+line-length = 80
+target-version = ["py313"]
+skip-string-normalization = false
+skip-magic-trailing-comma = false
+preview = true
+
+[tool.ruff]
+line-length = 80
+target-version = "py313"
+fix = true
+show-fixes = true
+exclude = [
+    "alembic",
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "D",   # pydocstyle
+    "UP",  # pyupgrade
+    "C90", # mccabe
+    "ANN", # аннотации типов
+    "N",   # pep8-naming
+    "ERA", # закомментированный код
+    "SIM", # упрощения
+    "RUF", # специфичные правила
+]
+
+ignore = [
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D106",
+    "D107",
+    "D203",
+    "D213",
+    "ERA001", # temp
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/spotify/schemas.py" = ["N805"]
+"app/users/schemas.py" = ["N805"]
+"app/yandex/schemas.py" = ["N805"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

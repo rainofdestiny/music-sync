@@ -2,35 +2,78 @@ services:
   app:
     build: .
     container_name: "app"
-    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - .:/app  # Монтируем текущую директорию в контейнер
+      - .:/app
     ports:
-      - "8000:8000"  # Открываем порт для доступа к приложению
-    env_file: .env
+      - "8000:8000"
+    env_file:
+      - .env
     depends_on:
+      - db
       - redis
+      - rabbitmq
 
   beat:
     build: .
-    container_name: "ms_beat"
-    command: uv run celery -A app.celery_app beat --loglevel=info
+    container_name: "beat"
+    command: uvicorn celery -A app.celery_app beat --loglevel=info
     volumes:
       - .:/app
     depends_on:
       - redis
+      - rabbitmq
 
   worker:
     build: .
-    container_name: "ms_worker"
-    command: uv run celery -A app.celery_app worker --loglevel=info
+    container_name: "worker"
+    command: uvicorn celery -A app.celery_app worker -P asyncio --loglevel=info
     volumes:
       - .:/app
     depends_on:
       - redis
+      - rabbitmq
+
+  db:
+    image: postgres:15
+    container_name: "postgres"
+    restart: always
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    # Удалено монтирование тома: данные будут храниться внутри контейнера и удалятся при его пересоздании
 
   redis:
-    container_name: "ms_redis"
-    image: "redis:alpine"  # Используем легковесный образ Redis
+    image: redis:alpine
+    container_name: "redis"
     ports:
-      - "6379:6379"  # Открываем порт Redis
+      - "6379:6379"
+    # Нет тома – данные будут эфемерными
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: "rabbitmq"
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "5672:5672" # AMQP-порт
+      - "15672:15672" # Management UI
+    # Нет тома – данные не сохраняются
+
+  alembic:
+    build: .
+    container_name: "alembic"
+    command: uv run alembic upgrade head
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: "on-failure"

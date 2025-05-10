@@ -1,12 +1,12 @@
-from fastapi import Request
-from yandex_music import ClientAsync
+from typing import Annotated
+
+from fastapi import Depends
+
+from app.yandex.client import Client
 
 
-async def get_client(request: Request) -> ClientAsync:
-    """
-    Зависимость для получения Yandex Music Client из app.state.
-    """
-    client = getattr(request.app.state, "client", None)
-    if not client:
-        raise RuntimeError("Yandex Music client is not initialized")
-    return client
+async def get_client() -> Client:
+    return await Client.init()
+
+
+ClientDep = Annotated[Client, Depends(get_client)]

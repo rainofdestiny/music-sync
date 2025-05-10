@@ -1,35 +1,36 @@
 import logging
-from loguru import logger
 import sys
+from logging import Handler, LogRecord
+
+from loguru import logger
 
 
-class InterceptHandler(logging.Handler):
-    def emit(self, record):
+class InterceptHandler(Handler):
+    def emit(self, record: LogRecord) -> None:
         try:
-            level = logger.level(record.levelname).name
+            level: str | int = logger.level(record.levelname).name
         except Exception:
-            level = record.levelno
+            level: int | str = record.levelno
 
-        logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+        logger.opt(depth=6, exception=record.exc_info).log(
+            level, record.getMessage()
+        )
 
 
 class Logger:
 
     def __init__(self) -> None:
         logging.basicConfig(handlers=[InterceptHandler()], level=0)
-        
+
         for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
             logging.getLogger(name).handlers = [InterceptHandler()]
 
         logger.remove()
         self._config()
 
-    def _config(self):
-        logger.add(
-            sys.stdout,
-            level="INFO",
-            format="{level} | {message}",
-        )
+    @staticmethod
+    def _config() -> None:
+        logger.add(sys.stdout, level="INFO", format="{level} | {message}")
 
         logger.add(
             "logs/app.log",

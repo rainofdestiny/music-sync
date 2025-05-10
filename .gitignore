@@ -2,5 +2,10 @@ __pycache__/
 celerybeat*
 *.log
 .env
-.venv
 logs/
+.venv
+.ruff_cache
+.idea
+.ropeproject
+.DS_Store
+database/

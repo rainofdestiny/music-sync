@@ -1,22 +1,15 @@
-import logging
 import base64
-
+from typing import Any
 from urllib.parse import urlencode
 
-from httpx import HTTPStatusError
-
-from app.spotify.utils import HTTPClient
-
-import redis.asyncio as redis
+from httpx import AsyncClient, HTTPStatusError
+from loguru import logger
 
 from app.config import settings
-from app.spotify.models import AuthModel, RefreshTokenAuthModel
+from app.spotify.schemas import AuthSchema, RefreshTokenAuthSchema
 
 
-logger = logging.getLogger(__name__)
-
-
-class AuthAPIClient:
+class OAuth:
 
     def __init__(self) -> None:
         self.client_id: str = settings.spotify_client_id
@@ -25,7 +18,7 @@ class AuthAPIClient:
         self.scope: str = settings.spotify_scope
 
     @property
-    def _auth_token(self) -> str:
+    def _basic_auth(self) -> str:
         token = f"{self.client_id}:{self.client_secret}"
         return base64.b64encode(token.encode()).decode()
 
@@ -39,84 +32,51 @@ class AuthAPIClient:
         }
         return f"https://accounts.spotify.com/authorize?{urlencode(params)}"
 
-    @staticmethod
-    async def _post_token_request(url: str, headers: dict, data: dict) -> dict:
-        async with HTTPClient() as c:
-            response = await c.post(url, headers=headers, data=data)
-            response.raise_for_status()
-            return response.json()
-
-    async def _refresh_token_request(
-        self, refresh: str, auth: str
-    ) -> RefreshTokenAuthModel:
+    async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         url = "https://accounts.spotify.com/api/token"
         headers = {
-            "Authorization": f"Basic {auth}",
+            "Authorization": f"Basic {self._basic_auth}",
             "Content-Type": "application/x-www-form-urlencoded",
         }
+        async with AsyncClient(
+            headers=headers, http2=True, timeout=10.0
+        ) as client:
+            response = await client.post(url, data=data)
+
+            try:
+                response.raise_for_status()
+            except HTTPStatusError as e:
+                match e.response.status_code:
+                    case 401:
+                        pass  # todo do smth
+                    case _:
+                        pass
+            return response.json()
+
+    async def refresh_token(self, refresh_token: str) -> RefreshTokenAuthSchema:
         data = {
             "grant_type": "refresh_token",
-            "refresh_token": refresh,
+            "refresh_token": refresh_token,
             "client_id": self.client_id,
         }
         try:
-            json_response = await self._post_token_request(url, headers, data)
+            response = await self._token_request(data)
             logger.info("Token refreshed successfully.")
-            return RefreshTokenAuthModel(**json_response)
+            return RefreshTokenAuthSchema(**response)
         except HTTPStatusError as e:
             logger.error(f"Error refreshing token: {e.response.text}")
-            raise ValueError(f"Error refreshing token: {e.response.text}") from e
+            raise ValueError(
+                f"Error refreshing token: {e.response.text}"
+            ) from e
         except Exception as e:
-            logger.error(f"An error occurred: {str(e)}")
-            raise ValueError(f"An error occurred: {str(e)}") from e
+            logger.error(f"An error occurred: {e!s}")
+            raise ValueError(f"An error occurred: {e!s}") from e
 
-    async def gen_oauth_data(self, code: str) -> AuthModel:
-
-        url = "https://accounts.spotify.com/api/token"
-        headers = {
-            "Authorization": f"Basic {self._auth_token}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
+    async def gen_tokens(self, code: str) -> AuthSchema:
         data = {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": self.redirect_uri,
         }
-        json_response = await self._post_token_request(url, headers, data)
-        return AuthModel(**json_response)
-
-
-class OAuth(AuthAPIClient):
-    _instance = None
-
-    def __new__(cls):
-        # Implementing singleton pattern to ensure a single instance of OAuth
-        if not cls._instance:
-            cls._instance = super(OAuth, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        super().__init__()
-        # Initializing only once to set up client credentials
-        if not hasattr(self, "initialized"):
-            self.initialized = True
-
-    async def get_access_token(self, r: redis.Redis) -> str:
-        if not (token := await r.get("spotify:access_token")):
-            token = await self._refresh_token(r)
-        return token
-
-    async def _refresh_token(self, r: redis.Redis) -> str:
-        refresh_token_value = await r.get("spotify:refresh_token")
-        if not refresh_token_value:
-            logger.error("Refresh token not found.")
-            raise ValueError("Refresh token not found.")
-        data = await self._refresh_token_request(
-            refresh=refresh_token_value,
-            auth=self._auth_token,
-        )
-        await r.set("spotify:access_token", data.access_token, ex=data.expires_in)
-        return data.access_token
-
-
-oauth = OAuth()
+        response = await self._token_request(data)
+        return AuthSchema(**response)
